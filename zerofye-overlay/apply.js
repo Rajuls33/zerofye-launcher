@@ -138,4 +138,33 @@ function applyOverlay(dir) {
 }
 
 applyOverlay(process.cwd());
+// Patch crates/core/catalog.toml & catalog.rs so launcher installs/opens Rajuls33/secure* MSIs
+const catTomlPath = path.join(process.cwd(), 'crates/core/catalog.toml');
+if (fs.existsSync(catTomlPath)) {
+  let toml = fs.readFileSync(catTomlPath, 'utf8');
+  toml = toml
+    .replace(/repo = "storytold\/deckcraft"/g, 'repo = "Rajuls33/securedeck"')
+    .replace(/repo = "storytold\/gridcraft"/g, 'repo = "Rajuls33/securegrid"')
+    .replace(/repo = "storytold\/pdfcraft"/g, 'repo = "Rajuls33/securepdf"')
+    .replace(/repo = "storytold\/photocraft"/g, 'repo = "Rajuls33/securephoto"')
+    .replace(/repo = "storytold\/wordcraft"/g, 'repo = "Rajuls33/secureword"')
+    .replace(/name = "DeckCraft"/g, 'name = "SecureDeck"')
+    .replace(/name = "GridCraft"/g, 'name = "SecureGrid"')
+    .replace(/name = "PdfCraft"/g, 'name = "SecurePDF"')
+    .replace(/name = "PhotoCraft"/g, 'name = "SecurePhoto"')
+    .replace(/name = "WordCraft"/g, 'name = "SecureWord"')
+    .replace(/publisher = "ArtCraft"/g, 'publisher = "Zerofye"')
+    .replace(/windows_msi_publisher = "Learning Machines LLC"\r?\n/g, '');
+  fs.writeFileSync(catTomlPath, toml, 'utf8');
+}
+const catRsPath = path.join(process.cwd(), 'crates/core/src/catalog.rs');
+if (fs.existsSync(catRsPath)) {
+  let rs = fs.readFileSync(catRsPath, 'utf8');
+  rs = rs
+    .replace(/pub const GITHUB_OWNER: &str = "storytold";/, 'pub const GITHUB_OWNER: &str = "Rajuls33";')
+    .replace(/pub const LAUNCHER_REPO: &str = "storytold\/craft-launcher";/, 'pub const LAUNCHER_REPO: &str = "Rajuls33/zerofye-launcher";')
+    .replace(/"storytold\/craft-launcher"/g, '"Rajuls33/zerofye-launcher"');
+  fs.writeFileSync(catRsPath, rs, 'utf8');
+}
 console.log('Zerofye build-time overlay applied cleanly.');
+

@@ -23,7 +23,6 @@ jobs:
           git config user.email "bot@zerofye.dev"
           git remote add upstream https://github.com/storytold/craft-launcher.git || true
           git fetch upstream main
-          # Keep upstream files clean; preserve only zerofye-overlay and workflow
           git checkout upstream/main -- .
           git checkout HEAD -- zerofye-overlay .github/workflows/sync-and-build.yml
           git add -A
@@ -67,22 +66,42 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libxdo-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev pkg-config cmake
+          sudo apt-get install -y libgtk-3-dev libxdo-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libasound2-dev pkg-config cmake
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build Release Binary
+      - name: Setup WiX v5 (Windows MSI Installer)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          dotnet tool install --global wix --version 5.0.2
+          wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
+
+      - name: Build Windows MSI Installer & Portable Zip
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          pwsh packaging/windows/package.ps1 -Arch x64
+
+      - name: Build Release Binary (Linux/macOS)
+        if: matrix.os != 'windows-latest'
         run: cargo build --release --target ${{ matrix.target }}
 
-      - name: Rename Binary & Upload to GitHub Release
+      - name: Upload Release Assets to GitHub Release
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ needs.sync-upstream.outputs.tag }}
         run: |
           mkdir -p dist-release
-          cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist-release/${{ matrix.out_name }}"
-          gh release create "$TAG" "dist-release/${{ matrix.out_name }}" --title "Zerofye zerofye-launcher $TAG" --notes "Automated Zerofye build synced from upstream." || gh release upload "$TAG" "dist-release/${{ matrix.out_name }}" --clobber
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            cp dist/release/*.msi dist-release/
+            cp dist/release/*.zip dist-release/
+            cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist-release/${{ matrix.out_name }}"
+          else
+            cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist-release/${{ matrix.out_name }}"
+          fi
+          gh release create "$TAG" dist-release/* --title "Zerofye zerofye-launcher $TAG" --notes "Automated Zerofye build synced from upstream." || gh release upload "$TAG" dist-release/* --clobber
