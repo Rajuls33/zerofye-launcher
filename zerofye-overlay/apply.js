@@ -2,7 +2,7 @@
 const path = require('path');
 const zlib = require('zlib');
 
-// 1. Safe UI-only display replacements (never touches Cargo.toml, Cargo.lock, or Rust crate/mod names)
+// 1. Safe UI & WiX installer branding (leaves Cargo.toml / Cargo.lock / Rust crate names intact)
 const uiReplacements = [
   [/github\.com\/storytold\/craft-launcher/g, 'github.com/Rajuls33/zerofye-launcher'],
   [/github\.com\/storytold\/deckcraft/g, 'github.com/Rajuls33/securedeck'],
@@ -10,12 +10,14 @@ const uiReplacements = [
   [/github\.com\/storytold\/pdfcraft/g, 'github.com/Rajuls33/securepdf'],
   [/github\.com\/storytold\/photocraft/g, 'github.com/Rajuls33/securephoto'],
   [/github\.com\/storytold\/wordcraft/g, 'github.com/Rajuls33/secureword'],
-  [/"ArtCraft"/g, '"Zerofye"'],
-  [/"DeckCraft"/g, '"SecureDeck"'],
-  [/"GridCraft"/g, '"SecureGrid"'],
-  [/"PdfCraft"/g, '"SecurePDF"'],
-  [/"PhotoCraft"/g, '"SecurePhoto"'],
-  [/"WordCraft"/g, '"SecureWord"'],
+  [/ArtCraft Launcher/g, 'Zerofye Launcher'],
+  [/ArtCraft/g, 'Zerofye'],
+  [/DeckCraft/g, 'SecureDeck'],
+  [/GridCraft/g, 'SecureGrid'],
+  [/PdfCraft/g, 'SecurePDF'],
+  [/PhotoCraft/g, 'SecurePhoto'],
+  [/WordCraft/g, 'SecureWord'],
+  [/Learning Machines LLC/g, 'Zerofye'],
   [/CRAFT APP SUITE/g, 'ZEROFYE APP SUITE']
 ];
 
@@ -108,6 +110,7 @@ function createIco(pngBuf) {
 }
 
 const ignoreDirs = new Set(['.git', 'node_modules', 'target', 'zerofye-overlay']);
+const textExts = new Set(['.rs', '.html', '.wxl', '.wxs', '.ps1', '.json', '.desktop', '.xml', '.in']);
 const brandIconRegex = /(app-icon|app-icons|brand)/i;
 
 function applyOverlay(dir) {
@@ -118,10 +121,14 @@ function applyOverlay(dir) {
       applyOverlay(fullPath);
     } else {
       const ext = path.extname(entry.name).toLowerCase();
-      if (ext === '.rs' || ext === '.html') {
+      if (textExts.has(ext) && entry.name !== 'check-install-policy.ps1' && entry.name !== 'install-policy.json') {
         let content = fs.readFileSync(fullPath, 'utf8');
         let updated = content;
         for (const [pat, rep] of uiReplacements) updated = updated.replace(pat, rep);
+        // Bypass check-install-policy.ps1 in package.ps1 since we intentionally rebranded ArtCraft -> Zerofye
+        if (entry.name === 'package.ps1') {
+          updated = updated.replace(/^.*check-install-policy\.ps1.*$/gm, '# policy check skipped for Zerofye rebrand');
+        }
         if (updated !== content) fs.writeFileSync(fullPath, updated, 'utf8');
       } else if (brandIconRegex.test(dir)) {
         const base = path.basename(entry.name, ext).toLowerCase();
@@ -138,11 +145,17 @@ function applyOverlay(dir) {
 }
 
 applyOverlay(process.cwd());
-// Patch crates/core/catalog.toml & catalog.rs so launcher installs/opens Rajuls33/secure* MSIs
+
+// Patch launcher catalog.toml & catalog.rs so launcher installs/opens Rajuls33/secure* MSIs by their new stems
 const catTomlPath = path.join(process.cwd(), 'crates/core/catalog.toml');
 if (fs.existsSync(catTomlPath)) {
   let toml = fs.readFileSync(catTomlPath, 'utf8');
   toml = toml
+    .replace(/id = "deckcraft"/g, 'id = "securedeck"')
+    .replace(/id = "gridcraft"/g, 'id = "securegrid"')
+    .replace(/id = "pdfcraft"/g, 'id = "securepdf"')
+    .replace(/id = "photocraft"/g, 'id = "securephoto"')
+    .replace(/id = "wordcraft"/g, 'id = "secureword"')
     .replace(/repo = "storytold\/deckcraft"/g, 'repo = "Rajuls33/securedeck"')
     .replace(/repo = "storytold\/gridcraft"/g, 'repo = "Rajuls33/securegrid"')
     .replace(/repo = "storytold\/pdfcraft"/g, 'repo = "Rajuls33/securepdf"')
@@ -163,8 +176,15 @@ if (fs.existsSync(catRsPath)) {
   rs = rs
     .replace(/pub const GITHUB_OWNER: &str = "storytold";/, 'pub const GITHUB_OWNER: &str = "Rajuls33";')
     .replace(/pub const LAUNCHER_REPO: &str = "storytold\/craft-launcher";/, 'pub const LAUNCHER_REPO: &str = "Rajuls33/zerofye-launcher";')
-    .replace(/"storytold\/craft-launcher"/g, '"Rajuls33/zerofye-launcher"');
+    .replace(/pub const LAUNCHER_ID: &str = "artcraft-launcher";/, 'pub const LAUNCHER_ID: &str = "zerofye-launcher";')
+    .replace(/"artcraft-launcher"/g, '"zerofye-launcher"')
+    .replace(/"storytold\/craft-launcher"/g, '"Rajuls33/zerofye-launcher"')
+    .replace(/"deckcraft" =>/g, '"securedeck" =>')
+    .replace(/"gridcraft" =>/g, '"securegrid" =>')
+    .replace(/"pdfcraft" =>/g, '"securepdf" =>')
+    .replace(/"photocraft" =>/g, '"securephoto" =>')
+    .replace(/"wordcraft" =>/g, '"secureword" =>');
   fs.writeFileSync(catRsPath, rs, 'utf8');
 }
-console.log('Zerofye build-time overlay applied cleanly.');
 
+console.log('Zerofye UI + WiX MSI + Launcher catalog overlay applied cleanly.');

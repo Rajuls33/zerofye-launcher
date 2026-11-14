@@ -98,10 +98,14 @@ jobs:
         run: |
           mkdir -p dist-release
           if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            cp dist/release/*.msi dist-release/
-            cp dist/release/*.zip dist-release/
+            for f in dist/release/*.msi dist/release/*.zip; do
+              base=$(basename "$f")
+              newbase=${base/artcraft-launcher/zerofye-launcher}
+              cp "$f" "dist-release/$newbase"
+            done
             cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist-release/${{ matrix.out_name }}"
           else
             cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist-release/${{ matrix.out_name }}"
           fi
           gh release create "$TAG" dist-release/* --title "Zerofye zerofye-launcher $TAG" --notes "Automated Zerofye build synced from upstream." || gh release upload "$TAG" dist-release/* --clobber
+
