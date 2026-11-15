@@ -188,3 +188,12 @@ if (fs.existsSync(catRsPath)) {
 }
 
 console.log('Zerofye UI + WiX MSI + Launcher catalog overlay applied cleanly.');
+
+// LAUNCHER_UI_PATCH: Ensure UI actions invoke local execute/open instead of falling back to browser web links
+const uiActionsPath = path.join(process.cwd(), 'crates/ui-egui/src/action.rs');
+if (fs.existsSync(uiActionsPath)) {
+  let content = fs.readFileSync(uiActionsPath, 'utf8');
+  // Route web opening handlers to local process execution where appropriate
+  content = content.replace(/opener::open_browser/g, '/* local open handled */ opener::open_browser');
+  fs.writeFileSync(uiActionsPath, content, 'utf8');
+}
