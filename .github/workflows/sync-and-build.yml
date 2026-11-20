@@ -1,111 +1,39 @@
 ﻿name: Upstream Mirror & Zerofye Release Build
 
 on:
-  schedule:
-    - cron: '0 */6 * * *'
   workflow_dispatch:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
 
 jobs:
-  sync-upstream:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    outputs:
-      tag: ${{ steps.ver.outputs.tag }}
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Fast-Forward Mirror from Upstream
-        run: |
-          git config user.name "Zerofye Bot"
-          git config user.email "bot@zerofye.dev"
-          git remote add upstream https://github.com/storytold/craft-launcher.git || true
-          git fetch upstream main
-          git checkout upstream/main -- .
-          git checkout HEAD -- zerofye-overlay .github/workflows/sync-and-build.yml
-          git add -A
-          git commit -m "chore: sync upstream craft-launcher" || echo "Already up to date"
-          git push origin main
-
-      - name: Extract Release Version
-        id: ver
-        run: |
-          V=$(grep -m1 '^version' Cargo.toml | cut -d '"' -f2)
-          echo "tag=v$V" >> $GITHUB_OUTPUT
-
   build-release:
-    needs: sync-upstream
     strategy:
-      fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            bin_name: artcraft-launcher.exe
-            out_name: zerofye-launcher-windows-x64.exe
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            bin_name: artcraft-launcher
-            out_name: zerofye-launcher-linux-x64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            bin_name: artcraft-launcher
-            out_name: zerofye-launcher-macos-arm64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
+
     steps:
       - uses: actions/checkout@v4
 
       - name: Apply Zerofye Overlay (Build-Time Only)
-        run: node zerofye-overlay/apply.js
-
-      - name: Install Linux Dependencies
-        if: matrix.os == 'ubuntu-latest'
+        shell: pwsh
         run: |
-          sudo apt-get update
-          sudo apt-get install -y libgtk-3-dev libxdo-dev libxcb-shape0-dev libxcb-xfixes0-dev libxkbcommon-dev libssl-dev libasound2-dev pkg-config cmake
+          if (Test-Path "zerofye-overlay/apply.js") {
+            node zerofye-overlay/apply.js
+          }
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.target }}
+          target: ${{ matrix.target }}
 
-      - name: Setup WiX v5 (Windows MSI Installer)
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          dotnet tool install --global wix --version 5.0.2
-          wix extension add -g WixToolset.UI.wixext/5.0.2 WixToolset.Util.wixext/5.0.2
-
-      - name: Build Windows MSI Installer & Portable Zip
-        if: matrix.os == 'windows-latest'
-        shell: pwsh
-        run: |
-          pwsh packaging/windows/package.ps1 -Arch x64
-
-      - name: Build Release Binary (Linux/macOS)
-        if: matrix.os != 'windows-latest'
+      - name: Build Release Binary
         run: cargo build --release --target ${{ matrix.target }}
-
-      - name: Upload Release Assets to GitHub Release
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ needs.sync-upstream.outputs.tag }}
-        run: |
-          mkdir -p dist-release
-          if [ "${{ matrix.os }}" = "windows-latest" ]; then
-            for f in dist/release/*.msi dist/release/*.zip; do
-              base=$(basename "$f")
-              newbase=${base/artcraft-launcher/zerofye-launcher}
-              cp "$f" "dist-release/$newbase"
-            done
-            cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist-release/${{ matrix.out_name }}"
-          else
-            cp "target/${{ matrix.target }}/release/${{ matrix.bin_name }}" "dist-release/${{ matrix.out_name }}"
-          fi
-          gh release create "$TAG" dist-release/* --title "Zerofye zerofye-launcher $TAG" --notes "Automated Zerofye build synced from upstream." || gh release upload "$TAG" dist-release/* --clobber
-
